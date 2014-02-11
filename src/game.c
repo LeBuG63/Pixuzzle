@@ -2,19 +2,20 @@
 
 #include "map.h"
 #include "engine.h"
-#include "comp.h"
+#include "save.h"
+
 
 #include <stdio.h>
 
 static void	set_difficulty(map_t *map, unsigned int difficulty) {
 	switch (difficulty) {
-	case 0:
+	case 1:
 		map->ncell_height = map->ncell_width = 40;
 		break;
-	case 1:
+	case 2:
 		map->ncell_height = map->ncell_width = 20;
 		break;
-	case 2:
+	case 3:
 		map->ncell_height = map->ncell_width = 10;
 		break;
 	}
@@ -30,11 +31,25 @@ static void print_crono(Window *win, TTF_Font *font, Timer *timer) {
 	SDL_BlitSurface(timer->time_print, NULL, win->screen, &timer->rect);
 }
 
-void	game_run(Window *win, unsigned int difficulty) {
+static int	wait_to_change_difficulty(int time_to_wait) {
+	static unsigned int	start_ticks = 0, ticks;
+
+	ticks = SDL_GetTicks();
+
+	if (ticks - start_ticks < 850 * 1000 / FPS)
+		return 0;
+
+	start_ticks = ticks;
+	return 1;
+}
+
+void		game_run(Window *win, unsigned int difficulty) {
 	Event			event;
 	map_t			map;
 	TTF_Font		*font = TTF_OpenFont("res/fonts/imagine_font.ttf", 32);
 	Timer			timer;
+	int				pixels_earn = 0;
+	int				delay = NEW_CELL_DELAY;
 
 	timer.rect.x = 300;
 	timer.rect.y = 50;
@@ -42,22 +57,28 @@ void	game_run(Window *win, unsigned int difficulty) {
 	timer.color.r = timer.color.g = timer.color.b = 255;
 
 	timer.time_print = TTF_RenderText_Blended(font, timer.time_char, timer.color);
-	
-	event_init(&event);
 
 	set_difficulty(&map, difficulty);
-	
-	_game_over = 0;
 
+	event_init(&event);
 	map_init(&map, win);
 
+	_game_over = 0;
+	
 	while (!event.close_window) {
-		
 		if (engine_need_update(FPS)) {
 			event_update(&event);
 
 			engine_move_tile(&map);
-			engine_add_cell(&map, NEW_CELL_DELAY);
+
+			if (wait_to_change_difficulty(1)) {
+				delay -= 1;
+
+				if (delay < 0)
+					delay = 0;
+			}
+
+			engine_add_cell(&map, delay);
 
 			if (event.mouse_clicked) {
 				blast_cell_mouse(&map, event.mouse_x, event.mouse_y);
@@ -66,7 +87,7 @@ void	game_run(Window *win, unsigned int difficulty) {
 
 			if (_game_over) {
 				game_over(win, font, event, timer.time);
-				game_save_score(timer.time / 1000.0, difficulty);
+				save_game_score(timer.time / 1000.0, difficulty);
 				event.close_window = 1;
 			}
 			else {
@@ -80,6 +101,10 @@ void	game_run(Window *win, unsigned int difficulty) {
 			}
 		}
 	}
+
+	pixels_earn = (int)timer.time / 1000;
+	save_pixels(pixels_earn);
+
 	TTF_CloseFont(font);
 	SDL_FreeSurface(timer.time_print);
 	map_free(&map);
@@ -88,7 +113,7 @@ void	game_run(Window *win, unsigned int difficulty) {
 void	game_over(Window *win, TTF_Font *font, Event event, double time) {
 	SDL_Surface *text = NULL;
 	SDL_Rect	rect;
-	char		time_char[50];
+	char		time_char[50] = {0};
 	SDL_Color	color = { 200, 200, 200 };
 
 	sprintf(time_char, "Time: %.3lf seconds !", time / 1000.0);
@@ -96,29 +121,28 @@ void	game_over(Window *win, TTF_Font *font, Event event, double time) {
 	text = TTF_RenderText_Blended(font, time_char, color);
 
 	rect.x = (win->width >> 1) - ((strlen(time_char) << 4) >> 1);
-	rect.y = (win->width >> 1) - 32;
+	rect.y = (win->width >> 1) - 16;
+
+	SDL_FillRect(win->screen, NULL, 0x000000);
+
+	SDL_BlitSurface(text, NULL, win->screen, &rect);
+
+	SDL_Flip(win->screen);
 
 	while (!event.close_window) {
 		event_update(&event);
 
-		if (event.key[SDLK_SPACE] || event.key[SDLK_RETURN] || event.mouse_clicked) {
+		if (event.key[SDLK_SPACE] || event.key[SDLK_RETURN]) {
 			event.close_window = 1;
 		}
-
-		SDL_FillRect(win->screen, NULL, 0x000000);
-
-		SDL_BlitSurface(text, NULL, win->screen, &rect);
-
-		SDL_Flip(win->screen);		
 	}
 
-	SDL_FreeSurface(text);
+	//SDL_FreeSurface(text);
 }
 
 void	game_save_score(double time, unsigned int difficulty) {
 	FILE	*file = fopen("res/save/save.px", "r+");
 	double	diff[3] = { 0 };
-	int		i = 0;
 
 	if (file) {
 		rewind(file);

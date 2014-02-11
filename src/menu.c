@@ -1,8 +1,9 @@
 #include "menu.h"
 #include "event.h"
-#include "map.h"
 #include "engine.h"
 #include "game.h"
+#include "save.h"
+#include "shop.h"
 
 #include <time.h>
 #include <string.h>
@@ -25,10 +26,13 @@ void	splash_screen(Window *win) {
 
 		event_update(&event);
 
-		if ((timer = SDL_GetTicks()) >= 3 * CLOCKS_PER_SEC) {
+		if (event.key[SDLK_SPACE] || event.key[SDLK_RETURN])
+			event.close_window = 1;
+
+		if ((timer = SDL_GetTicks()) >= 3000) {
 			if (i >= 255)
 				goto stop;
-			SDL_SetAlpha(deg, SDL_SRCALPHA, i += 1);
+			SDL_SetAlpha(deg, SDL_SRCALPHA, ++i);
 		}
 
 		SDL_FillRect(win->screen, NULL, 0x000000);
@@ -36,7 +40,8 @@ void	splash_screen(Window *win) {
 		SDL_BlitSurface(surface, NULL, win->screen, NULL);
 		SDL_BlitSurface(deg, NULL, win->screen, NULL);
 
-		SDL_Flip(win->screen);
+		while (SDL_Flip(win->screen) == -1)
+			SDL_Delay(1);
 	}
 
 stop:
@@ -44,7 +49,7 @@ stop:
 	SDL_FreeSurface(deg);
 }
 
-void	get_hight_score(double *time, FILE *file) {
+static void	get_hight_score(double *time, FILE *file) {
 	if (file) {
 		fscanf(file, "%lf %lf %lf", &time[0], &time[1], &time[2]);
 		rewind(file);
@@ -56,18 +61,29 @@ void	get_hight_score(double *time, FILE *file) {
 	}
 }
 
+static void	manage_engine(map_t *map) {
+	engine_move_tile(map);
+
+	if (_game_over) {
+		map_fill(map);
+		_game_over = 0;
+	}
+
+	engine_add_cell(map, NEW_CELL_DELAY);
+}
+
 void	main_menu(Window *win) {
 	Event			event;
 	map_t			map;
 
 	int				velocity = 2;
 
-	unsigned int	difficulty = 0;
+	unsigned int	difficulty = 1;
 	unsigned int	last = 0;
 	unsigned int	blit_time = 1;
 
 	double			time[3] = { 0 };
-	char			best_time_char[10] = { ' ' };
+	char			best_time_char[10] = { 0 };
 
 	TTF_Font		*font = TTF_OpenFont("res/fonts/Squareo.ttf", 72);
 	SDL_Surface		*text = NULL, *best_time = NULL;
@@ -75,7 +91,7 @@ void	main_menu(Window *win) {
 	SDL_Color		color = { 255, 255, 255 };
 	SDL_Rect		rect, rect_diff, rect_best_time;
 
-	FILE			*file = fopen("res/save/save.px", "r");
+	save_open();
 
 	if (!font)
 		exit(0);
@@ -86,25 +102,22 @@ void	main_menu(Window *win) {
 	map.ncell_width = 30;
 
 	map_init(&map, win);
+	save_get_game_score(time);
 
 	text = TTF_RenderText_Blended(font, "Pixuzzle", color);
 
 	font = TTF_OpenFont("res/fonts/imagine_font.ttf", 22);
 
-	get_hight_score(time, file);
-	sprintf(best_time_char, "%.03lf", time[difficulty]);
+	sprintf(best_time_char, "%.03lf", time[difficulty - 1]);
 	best_time = TTF_RenderText_Blended(font, best_time_char, color);
-
 
 	srfc_difficulty = IMG_Load("res/img/difficulty.png");
 
 	rect.x = (win->width >> 1) - ((strlen("Pixuzzle") * 72) >> 1);
 	rect.y = 32;
 
-	rect_diff.x = 0;
+	rect_diff.x = (difficulty * 720);
 	rect_diff.y = -((win->height >> 1) - (260 >> 1));
-	rect_diff.h = 720;
-	rect_diff.w = 720 * 3;
 
 	rect_best_time.x = 280;
 	rect_best_time.y = 413;
@@ -113,7 +126,7 @@ void	main_menu(Window *win) {
 
 	while (!event.close_window) {
 
-		if (engine_need_update(FPS)){
+		if (engine_need_update(FPS)) {
 			event_update(&event);
 
 			if (event.key[SDLK_LEFT]) {
@@ -121,34 +134,50 @@ void	main_menu(Window *win) {
 					--difficulty;
 					last = 2;
 					event.key[SDLK_LEFT] = 0;
-					sprintf(best_time_char, "%.03lf", time[difficulty]);
+
+					sprintf(best_time_char, "%.03lf", time[difficulty - 1]);
 					best_time = TTF_RenderText_Blended(font, best_time_char, color);
 				}
 			}
 
 			if (event.key[SDLK_RIGHT]) {
-				if (difficulty < 2) {
+				if (difficulty < 3) {
 					++difficulty;
 					last = 1;
 					event.key[SDLK_RIGHT] = 0;
-					sprintf(best_time_char, "%.03lf", time[difficulty]);
-					best_time = TTF_RenderText_Blended(font, best_time_char, color);
+
+					if (difficulty > 0) {
+						sprintf(best_time_char, "%.03lf", time[difficulty - 1]);
+						best_time = TTF_RenderText_Blended(font, best_time_char, color);
+					}
 				}
 			}
 
 			if (event.key[SDLK_RETURN]) {
-				map_free(&map);
+				if (difficulty == 0) {
 
-				event.key[SDLK_RETURN] = 0;
-				game_run(win, difficulty);
+					map_free(&map);
 
-				get_hight_score(time, file);
-				sprintf(best_time_char, "%.03lf", time[difficulty]);
-				best_time = TTF_RenderText_Blended(font, best_time_char, color);
+					event.key[SDLK_RETURN] = 0;
+					shop(win);
 
-				map.ncell_height = map.ncell_width = ((rand() % 4) + 1) * 10;
+					map.ncell_height = map.ncell_width = ((rand() % 4) + 1) * 10;
+					map_init(&map, win);
+				}
+				else {
+					map_free(&map);
 
-				map_init(&map, win);
+					event.key[SDLK_RETURN] = 0;
+					game_run(win, difficulty);
+
+					save_get_game_score(time);
+					sprintf(best_time_char, "%.03lf", time[difficulty - 1]);
+					best_time = TTF_RenderText_Blended(font, best_time_char, color);
+
+					map.ncell_height = map.ncell_width = ((rand() % 4) + 1) * 10;
+
+					map_init(&map, win);
+				}
 			}
 
 			else {
@@ -160,18 +189,14 @@ void	main_menu(Window *win) {
 					rect_diff.x += 40;
 					blit_time = 0;
 				}
+				else if (difficulty == 0) {
+					blit_time = 0;
+				}
 				else {
 					blit_time = 1;
 				}
 
-				engine_move_tile(&map);
-
-				if (_game_over) {
-					map_fill(&map);
-					_game_over = 0;
-				}
-
-				engine_add_cell(&map, NEW_CELL_DELAY);
+				manage_engine(&map);
 
 				if (rect.x <= 0)
 					velocity = 2;
@@ -189,15 +214,17 @@ void	main_menu(Window *win) {
 				if (blit_time)
 					SDL_BlitSurface(best_time, NULL, win->screen, &rect_best_time);
 
-				SDL_Flip(win->screen);
+				while (SDL_Flip(win->screen) == -1)
+					SDL_Delay(1);
 			}
 		}
 	}
+
 	SDL_FreeSurface(text);
 	SDL_FreeSurface(srfc_difficulty);
 	TTF_CloseFont(font);
 
+	save_close();
 
-	fclose(file);
 	map_free(&map);
 }

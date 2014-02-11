@@ -1,6 +1,9 @@
 #pragma once
 
 #include "map.h"
+#include "cell_type.h"
+
+#define FPS				63
 
 int		engine_need_update(int fps);
 void	engine_move_tile(map_t *map);

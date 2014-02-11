@@ -1,5 +1,6 @@
 #include "engine.h"
 #include "game.h"
+#include "cell_type.h"
 
 #include <time.h>
 
@@ -17,15 +18,12 @@ int		engine_need_update(int fps) {
 }
 
 void	engine_move_tile(map_t *map) {
-	int x, y;
-
+	int				x, y;
 	unsigned int	current_cell, below_cell, current_cell_color;
 
-	for (x = 0; x < map->ncell_width; ++x) {
-		for (y = 0; y < map->ncell_height; ++y) {
-			map->arr_bool[x][y] = 0;
-		}
-	}
+	for (x = 0; x < map->ncell_width; ++x)
+		for (y = 0; y < map->ncell_height; ++y)
+			map->arr_bool[x][y] = COLOR_BLACK;
 
 	for (x = 0; x < map->ncell_width; ++x) {
 		for (y = 0; y < map->ncell_height; ++y) {
@@ -51,7 +49,7 @@ void	engine_move_tile(map_t *map) {
 
 void	engine_add_cell_rand(map_t *map) {
 	int			 x,
-				 chance_white;
+				 chance_special_cell;
 	unsigned int color;
 
 	x = rand() % map->ncell_width;
@@ -75,11 +73,31 @@ void	engine_add_cell_rand(map_t *map) {
 		color = COLOR_BLACK;
 	}
 
-	chance_white = rand() % 276;
-
-	if (chance_white == 98)
-		color = COLOR_WHITE;
-
+	if (map->cell_type.cell_white) {
+		chance_special_cell = rand() % 400;
+		if (chance_special_cell == 200)
+			color = COLOR_WHITE;
+	}
+	else if (map->cell_type.cell_darkblue) {
+		chance_special_cell = rand() % 2706;
+		if (chance_special_cell == 1998)
+			color = COLOR_DARKGREY;
+	}
+	if (map->cell_type.cell_lightblue) {
+		chance_special_cell = rand() % 800;
+		if (chance_special_cell == 400)
+			color = COLOR_LIGHTBLUE;
+	}	
+	if (map->cell_type.cell_lightred) {
+		chance_special_cell = rand() % 1000;
+		if (chance_special_cell == 500)
+			color = COLOR_LIGHTRED;
+	}
+	if (map->cell_type.cell_lightgreen) {
+		chance_special_cell = rand() % 600;
+		if (chance_special_cell == 300)
+			color = COLOR_LIGHTGREEN;
+	}
 	map_add_cell(map, x, 0, color);
 }
 
@@ -98,6 +116,11 @@ void	blast_cell_mouse(map_t *map, int mouse_x, int mouse_y) {
 	hit_cell_row = mouse_x / map->cell_width;
 	hit_cell_col = mouse_y / map->cell_height;
 
+	if (hit_cell_col > map->ncell_height)
+		hit_cell_col = map->ncell_height;
+	if (hit_cell_row > map->ncell_width)
+		hit_cell_row = map->ncell_width;
+
 	init_blast_cell(map, hit_cell_row, hit_cell_col);
 }
 
@@ -110,8 +133,80 @@ void	init_blast_cell(map_t *map, int row, int col) {
 		map_add_cell(map, row, col, COLOR_BLACK);
 
 		for (x = 0; x < map->ncell_width; ++x)
-			for (y = (col > ((map->ncell_height - 5)) ? map->ncell_height + 5 : col); y < col + 5; ++y)
+			for (y = col; y < col + 5 && y < map->ncell_height; ++y)
 				map_del_cell(map, x, y);
+	}
+	else if (color == COLOR_DARKGREY) {
+		int x, y;
+
+		map_add_cell(map, row, col, COLOR_BLACK);
+
+		for (x = 0; x < map->ncell_width; ++x)
+			for (y = 0; y < map->ncell_height; ++y)
+				map_del_cell(map, x, y);
+	}
+	else if (color == COLOR_LIGHTGREEN) {
+		int x, y;
+
+		map_add_cell(map, row, col, COLOR_BLACK);
+
+		for (x = row - 4; x < row + 4; ++x) {
+			for (y = col - 4; y < col + 4; ++y) {
+				if (x >= 0 && y >= 0 && x < map->ncell_width && y < map->ncell_height)
+					map_del_cell(map, x, y);
+			}
+		}
+	}
+	else if (color == COLOR_LIGHTRED) {
+		int color_to_exlose = rand() % 4;
+		int x, y;
+
+		map_add_cell(map, row, col, COLOR_BLACK);
+
+		switch (color_to_exlose) {
+		case 0:
+			color_to_exlose = COLOR_RED;
+			break;
+		case 1:
+			color_to_exlose = COLOR_GREEN;
+			break;
+		case 2:
+			color_to_exlose = COLOR_BLUE;
+			break;
+		case 3:
+			color_to_exlose = COLOR_PUPRLE;
+			break;
+		default:
+			;
+		}
+		for (x = 0; x < map->ncell_width; ++x) {
+			for (y = 0; y < map->ncell_height; ++y) {
+				if (map_get_cell(*map, x, y) == color_to_exlose) {
+					map_del_cell(map, x, y);
+				}
+			}
+		}
+	}
+	else if (color == COLOR_LIGHTBLUE) {
+		int	is_left, x, y;
+		int	start_row;
+		int middle_screen = (map->ncell_width >> 1);
+
+		map_add_cell(map, row, col, COLOR_BLACK);
+
+		if (row < middle_screen) {
+			is_left = 1;
+			start_row = 0;
+		}
+		else {
+			is_left = 0;
+			start_row = middle_screen;
+		}
+		for (x = start_row; (is_left) ? (x < middle_screen) : (x < map->ncell_width); ++x) {
+			for (y = 0; y < map->ncell_height; ++y) {
+				map_del_cell(map, x, y);
+			}
+		}
 	}
 	else if (color != COLOR_BLACK) {
 		if (row > 0 && map_get_cell(*map, row - 1, col) == color
@@ -124,14 +219,14 @@ void	init_blast_cell(map_t *map, int row, int col) {
 		else {
 			int i;
 
-			for (i = 0; i < 20; ++i) {
+			for (i = 0; i < map->ncell_height; ++i) {
 				engine_add_cell_rand(map);
 			}
 		}
 	}
 	else {
 		int i;
-		for (i = 0; i < 20; ++i)
+		for (i = 0; i < map->ncell_height; ++i)
 			engine_add_cell_rand(map);
 	}
 }

@@ -19,7 +19,6 @@ void	event_update(Event *event) {
 	while (SDL_PollEvent(&sevent)) {
 		switch (sevent.type) {
 		case SDL_QUIT:
-		case SDLK_ESCAPE:
 			event->close_window = 1;
 			break;
 		case SDL_KEYUP:
@@ -40,4 +39,7 @@ void	event_update(Event *event) {
 			break;
 		}
 	}
+
+	if (event->key[SDLK_ESCAPE] == 1)
+		event->close_window = 1;
 }

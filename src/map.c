@@ -1,5 +1,6 @@
 #include "map.h"
 #include "window.h"
+#include "save.h"
 
 #include <stdlib.h>
 
@@ -17,11 +18,14 @@ void	map_init(map_t *map, Window	 *win) {
 		map->arr_bool[x] = malloc(map->ncell_width * sizeof(unsigned int **));
 	}
 
-	for (x = 0; x < map->ncell_width; ++x)
+	for (x = 0; x < map->ncell_width; ++x) {
 		for (y = 0; y < map->ncell_height; ++y) {
 			map->arr[x][y] = COLOR_BLACK;
 			map->arr_bool[x][y] = 0;
+		}
 	}
+
+	save_get_game_cell_unlock(&map->cell_type);
 	
 	map->surface = SDL_CreateRGBSurface(SDL_HWSURFACE, map->cell_width, map->cell_height, 32, 0, 0, 0, 0);
 }
